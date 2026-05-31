@@ -61,6 +61,8 @@ internal static class Gl
     private static GlBufferData _bufferData = null!;
     private static GlEnableVertexAttribArray _enableVertexAttribArray = null!;
     private static GlVertexAttribPointer _vertexAttribPointer = null!;
+    private static GlDeleteVertexArrays _deleteVertexArrays = null!;
+    private static GlDeleteBuffers _deleteBuffers = null!;
 
     public static string GetString(uint name)
     {
@@ -106,6 +108,8 @@ internal static class Gl
     public static void GetProgramInfoLog(uint program, int maxLength, out int length, IntPtr infoLog) => _getProgramInfoLog(program, maxLength, out length, infoLog);
     public static void UseProgram(uint program) => _useProgram(program);
     public static void DeleteShader(uint shader) => _deleteShader(shader);
+    public static void DeleteVertexArrays(int n, ref uint arrays) => _deleteVertexArrays(n, ref arrays);
+    public static void DeleteBuffers(int n, ref uint buffers) => _deleteBuffers(n, ref buffers);
     public static int GetUniformLocation(uint program, string name) => _getUniformLocation(program, name);
     public static void Uniform3f(int location, float x, float y, float z) { if (location >= 0) _uniform3f(location, x, y, z); }
     public static void Uniform1f(int location, float x) { if (location >= 0) _uniform1f(location, x); }
@@ -159,6 +163,8 @@ internal static class Gl
         _getProgramInfoLog = Load<GlGetProgramInfoLog>("glGetProgramInfoLog");
         _useProgram = Load<GlUseProgram>("glUseProgram");
         _deleteShader = Load<GlDeleteShader>("glDeleteShader");
+        _deleteVertexArrays = Load<GlDeleteVertexArrays>("glDeleteVertexArrays");
+        _deleteBuffers = Load<GlDeleteBuffers>("glDeleteBuffers");
         _getUniformLocation = Load<GlGetUniformLocation>("glGetUniformLocation");
         _uniformMatrix4fv = Load<GlUniformMatrix4fv>("glUniformMatrix4fv");
         _uniform3f = Load<GlUniform3f>("glUniform3f");
@@ -202,6 +208,8 @@ internal static class Gl
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlGetProgramInfoLog(uint program, int maxLength, out int length, IntPtr infoLog);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlUseProgram(uint program);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlDeleteShader(uint shader);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlDeleteVertexArrays(int n, ref uint arrays);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlDeleteBuffers(int n, ref uint buffers);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate int GlGetUniformLocation(uint program, [MarshalAs(UnmanagedType.LPStr)] string name);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlUniformMatrix4fv(int location, int count, byte transpose, IntPtr value);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate void GlUniform3f(int location, float v0, float v1, float v2);

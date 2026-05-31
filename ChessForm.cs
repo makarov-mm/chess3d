@@ -31,17 +31,24 @@ internal sealed class ChessForm : Form
     private Mesh _highlightMesh = null!;
     private Mesh _overlayPanelMesh = null!;
     private Mesh _overlayTextMesh = null!;
+    private Mesh? _statusTextMesh;
+    private string _statusString = "";
     private readonly Dictionary<PieceKind, Mesh> _pieceMeshes = new();
 
-    private readonly ChessPiece?[,] _board = new ChessPiece?[8, 8];
-    private PieceSide _turn = PieceSide.White;
+    private readonly ChessGame _game = new();
     private (int File, int Rank)? _selected;
     private readonly List<BoardMove> _legalMoves = new();
+
+    // Computer opponent state.
+    private bool _vsComputer = true;
+    private PieceSide _humanSide = PieceSide.White;
+    private int _aiDepth = 3;
+    private bool _aiThinking;
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Timer _timer = new() { Interval = 16 };
 
-    private float _yaw = -0.60f;
+    private float _yaw = 3.14f;
     private float _pitch = 0.68f;
     private float _distance = 10.8f;
     private bool _mouseDown;
@@ -51,7 +58,7 @@ internal sealed class ChessForm : Form
 
     public ChessForm()
     {
-        Text = "3D Chess - C# WinForms OpenGL 4 Shader Demo";
+        Text = "3D Chess - C# WinForms OpenGL Shader Demo";
         ClientSize = new Size(1200, 860);
         MinimumSize = new Size(720, 520);
         KeyPreview = true;
@@ -77,8 +84,10 @@ internal sealed class ChessForm : Form
         base.OnLoad(e);
         InitOpenGL();
         InitScene();
-        NewGame();
+        UpdateWindowTitle();
+        UpdateStatusText();
         _timer.Start();
+        MaybeTriggerAi();
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -162,12 +171,14 @@ internal sealed class ChessForm : Form
             _mouseDown = false;
             Capture = false;
 
-            if (_dragPixels <= 6 && e.X > 360)
+            if (_dragPixels <= 6 && !InOverlay(e.Location))
                 HandleClick(e.Location);
         }
 
         base.OnMouseUp(e);
     }
+
+    private static bool InOverlay(Point p) => p.X < 384 && p.Y < 320;
 
     protected override void OnMouseWheel(MouseEventArgs e)
     {
@@ -181,12 +192,35 @@ internal sealed class ChessForm : Form
         switch (e.KeyCode)
         {
             case Keys.N:
-                NewGame();
+                StartNewGame();
+                break;
+            case Keys.C:
+                _vsComputer = !_vsComputer;
+                UpdateStatusText();
+                MaybeTriggerAi();
+                break;
+            case Keys.S:
+                _humanSide = ChessGame.Opposite(_humanSide);
+                _vsComputer = true;
+                StartNewGame();
+                break;
+            case Keys.D1:
+            case Keys.NumPad1:
+                _aiDepth = 2;
+                UpdateStatusText();
+                break;
+            case Keys.D2:
+            case Keys.NumPad2:
+                _aiDepth = 3;
+                UpdateStatusText();
+                break;
+            case Keys.D3:
+            case Keys.NumPad3:
+                _aiDepth = 4;
+                UpdateStatusText();
                 break;
             case Keys.Home:
-                _yaw = -0.60f;
-                _pitch = 0.68f;
-                _distance = 10.8f;
+                ResetCamera();
                 break;
             case Keys.Escape:
                 Close();
@@ -194,6 +228,25 @@ internal sealed class ChessForm : Form
         }
 
         base.OnKeyDown(e);
+    }
+
+    private void ResetCamera()
+    {
+        _yaw = 3.14f;
+        _pitch = 0.68f;
+        _distance = 10.8f;
+    }
+
+    private void StartNewGame()
+    {
+        _game.NewGame();
+        ClearSelection();
+        _aiThinking = false;
+        ResetCamera();
+        UpdateWindowTitle();
+        UpdateStatusText();
+        Invalidate(false);
+        MaybeTriggerAi();
     }
 
     private void InitOpenGL()
@@ -289,48 +342,22 @@ internal sealed class ChessForm : Form
         _pieceMeshes[PieceKind.Queen] = ObjLoader.LoadMesh(Files.Model("queen"));
         _pieceMeshes[PieceKind.King] = ObjLoader.LoadMesh(Files.Model("king"));
 
-        _overlayPanelMesh = Mesh.CreateScreenQuad(14.0f, 14.0f, 320.0f, 180.0f);
+        _overlayPanelMesh = Mesh.CreateScreenQuad(14.0f, 14.0f, 360.0f, 296.0f);
         _overlayTextMesh = Mesh.CreateBitmapText(new[]
         {
             "3D CHESS",
             "",
             "LEFT CLICK SELECT MOVE",
-            "MOUSE DRAG ROTATE VIEW",
-            "MOUSE WHEEL ZOOM",
+            "DRAG ROTATE   WHEEL ZOOM",
             "",
             "N NEW GAME",
+            "C TOGGLE COMPUTER",
+            "S SWAP SIDES",
+            "1 2 3 LEVEL",
             "HOME RESET CAMERA",
-            "ESC CLOSE"
+            "ESC QUIT"
         }, 26.0f, 28.0f, 2.0f, 4.0f);
     }
-
-    private void NewGame()
-    {
-        for (int f = 0; f < 8; f++)
-            for (int r = 0; r < 8; r++)
-                _board[f, r] = null;
-        _selected = null;
-        _legalMoves.Clear();
-        _turn = PieceSide.White;
-
-        PieceKind[] backRank =
-        {
-            PieceKind.Rook, PieceKind.Knight, PieceKind.Bishop, PieceKind.Queen,
-            PieceKind.King, PieceKind.Bishop, PieceKind.Knight, PieceKind.Rook
-        };
-
-        for (int file = 0; file < 8; file++)
-        {
-            Place(new ChessPiece(backRank[file], PieceSide.White, file, 0));
-            Place(new ChessPiece(PieceKind.Pawn, PieceSide.White, file, 1));
-            Place(new ChessPiece(PieceKind.Pawn, PieceSide.Black, file, 6));
-            Place(new ChessPiece(backRank[file], PieceSide.Black, file, 7));
-        }
-
-        UpdateWindowTitle();
-    }
-
-    private void Place(ChessPiece piece) => _board[piece.File, piece.Rank] = piece;
 
     private void Render()
     {
@@ -441,7 +468,7 @@ internal sealed class ChessForm : Form
         Gl.Uniform1i(_uReflection, reflection ? 1 : 0);
         Gl.Uniform1f(_uAlpha, reflection ? 0.20f : 1.0f);
 
-        foreach (ChessPiece piece in Pieces())
+        foreach (ChessPiece piece in _game.Pieces())
         {
             Vector3 center = SquareCenter(piece.File, piece.Rank);
             float y = BoardTopY + 0.015f;
@@ -484,6 +511,13 @@ internal sealed class ChessForm : Form
         Gl.Uniform3f(_uColor, 0.72f, 0.90f, 1.00f);
         _overlayTextMesh.Draw();
 
+        if (_statusTextMesh is { } status)
+        {
+            Gl.Uniform1f(_uAlpha, 0.98f);
+            Gl.Uniform3f(_uColor, 1.00f, 0.86f, 0.42f);
+            status.Draw();
+        }
+
         Gl.Enable(Gl.GL_DEPTH_TEST);
         Gl.Enable(Gl.GL_CULL_FACE);
     }
@@ -497,30 +531,27 @@ internal sealed class ChessForm : Form
         mesh.Draw();
     }
 
-    private IEnumerable<ChessPiece> Pieces()
-    {
-        for (int file = 0; file < 8; file++)
-            for (int rank = 0; rank < 8; rank++)
-                if (_board[file, rank] is { } piece)
-                    yield return piece;
-    }
-
     private static Vector3 SquareCenter(int file, int rank) => new(file - 3.5f, BoardTopY, rank - 3.5f);
 
     private void HandleClick(Point screenPoint)
     {
+        if (_game.IsOver || _aiThinking || (_vsComputer && _game.Turn != _humanSide))
+            return;
+
         if (!TryPickSquare(screenPoint, out int file, out int rank))
             return;
 
-        ChessPiece? clicked = _board[file, rank];
+        ChessPiece? clicked = _game[file, rank];
 
         if (_selected == null)
         {
-            if (clicked != null && clicked.Side == _turn)
+            if (clicked != null && clicked.Side == _game.Turn)
                 SelectPiece(file, rank);
             return;
         }
 
+        // First matching legal move. Promotion variants are emitted queen-first,
+        // so a human pawn reaching the back rank auto-queens.
         int moveIndex = _legalMoves.FindIndex(m => m.ToFile == file && m.ToRank == rank);
         if (moveIndex >= 0)
         {
@@ -528,7 +559,7 @@ internal sealed class ChessForm : Form
             return;
         }
 
-        if (clicked != null && clicked.Side == _turn)
+        if (clicked != null && clicked.Side == _game.Turn)
             SelectPiece(file, rank);
         else
             ClearSelection();
@@ -536,19 +567,62 @@ internal sealed class ChessForm : Form
 
     private void SelectPiece(int file, int rank)
     {
-        ChessPiece? piece = _board[file, rank];
-        if (piece == null || piece.Side != _turn)
+        ChessPiece? piece = _game[file, rank];
+        if (piece == null || piece.Side != _game.Turn)
             return;
 
         _selected = (file, rank);
         _legalMoves.Clear();
-        _legalMoves.AddRange(GetLegalMoves(piece));
+        _legalMoves.AddRange(_game.LegalMoves(piece));
     }
 
     private void ClearSelection()
     {
         _selected = null;
         _legalMoves.Clear();
+    }
+
+    private void MakeMove(BoardMove move)
+    {
+        if (!_game.TryMakeMove(move))
+            return;
+
+        ClearSelection();
+        UpdateWindowTitle();
+        UpdateStatusText();
+        Invalidate(false);
+        MaybeTriggerAi();
+    }
+
+    private void MaybeTriggerAi()
+    {
+        if (!_vsComputer || _game.IsOver || _aiThinking || _game.Turn == _humanSide)
+            return;
+
+        _aiThinking = true;
+        UpdateStatusText();
+        // Defer to the message loop so the human's move is painted first.
+        BeginInvoke(new Action(RunAi));
+    }
+
+    private void RunAi()
+    {
+        try
+        {
+            BoardMove? best = _game.FindBestMove(_game.Turn, _aiDepth);
+            if (best is { } move)
+                _game.TryMakeMove(move);
+        }
+        finally
+        {
+            _aiThinking = false;
+        }
+
+        ClearSelection();
+        UpdateWindowTitle();
+        UpdateStatusText();
+        Invalidate(false);
+        MaybeTriggerAi();
     }
 
     private bool TryPickSquare(Point p, out int file, out int rank)
@@ -580,325 +654,44 @@ internal sealed class ChessForm : Form
 
         file = (int)MathF.Floor(hit.X + 4.0f);
         rank = (int)MathF.Floor(hit.Z + 4.0f);
-        return IsInside(file, rank);
-    }
-
-    private List<BoardMove> GetLegalMoves(ChessPiece piece)
-    {
-        var result = new List<BoardMove>();
-        foreach (BoardMove move in GetPseudoMoves(piece, includeCastling: true))
-        {
-            if (!WouldLeaveKingInCheck(piece, move))
-                result.Add(move);
-        }
-        return result;
-    }
-
-    private IEnumerable<BoardMove> GetPseudoMoves(ChessPiece piece, bool includeCastling)
-    {
-        int f = piece.File;
-        int r = piece.Rank;
-
-        switch (piece.Kind)
-        {
-            case PieceKind.Pawn:
-            {
-                int dir = piece.Side == PieceSide.White ? 1 : -1;
-                int startRank = piece.Side == PieceSide.White ? 1 : 6;
-                int one = r + dir;
-                if (IsInside(f, one) && _board[f, one] == null)
-                {
-                    yield return new BoardMove(f, r, f, one);
-                    int two = r + dir * 2;
-                    if (r == startRank && IsInside(f, two) && _board[f, two] == null)
-                        yield return new BoardMove(f, r, f, two);
-                }
-
-                foreach (int df in new[] { -1, 1 })
-                {
-                    int tf = f + df;
-                    int tr = r + dir;
-                    if (IsInside(tf, tr) && _board[tf, tr] is { } target && target.Side != piece.Side)
-                        yield return new BoardMove(f, r, tf, tr);
-                }
-                break;
-            }
-
-            case PieceKind.Knight:
-                foreach ((int df, int dr) in new[] { (1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2) })
-                    if (CanMoveTo(piece, f + df, r + dr))
-                        yield return new BoardMove(f, r, f + df, r + dr);
-                break;
-
-            case PieceKind.Bishop:
-                foreach (BoardMove move in RayMoves(piece, new[] { (1, 1), (1, -1), (-1, 1), (-1, -1) }))
-                    yield return move;
-                break;
-
-            case PieceKind.Rook:
-                foreach (BoardMove move in RayMoves(piece, new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }))
-                    yield return move;
-                break;
-
-            case PieceKind.Queen:
-                foreach (BoardMove move in RayMoves(piece, new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1) }))
-                    yield return move;
-                break;
-
-            case PieceKind.King:
-                for (int df = -1; df <= 1; df++)
-                    for (int dr = -1; dr <= 1; dr++)
-                        if ((df != 0 || dr != 0) && CanMoveTo(piece, f + df, r + dr))
-                            yield return new BoardMove(f, r, f + df, r + dr);
-
-                if (includeCastling)
-                {
-                    foreach (BoardMove castle in CastlingMoves(piece))
-                        yield return castle;
-                }
-                break;
-        }
-    }
-
-    private IEnumerable<BoardMove> RayMoves(ChessPiece piece, IEnumerable<(int Df, int Dr)> dirs)
-    {
-        foreach ((int df, int dr) in dirs)
-        {
-            int f = piece.File + df;
-            int r = piece.Rank + dr;
-            while (IsInside(f, r))
-            {
-                ChessPiece? target = _board[f, r];
-                if (target == null)
-                {
-                    yield return new BoardMove(piece.File, piece.Rank, f, r);
-                }
-                else
-                {
-                    if (target.Side != piece.Side)
-                        yield return new BoardMove(piece.File, piece.Rank, f, r);
-                    break;
-                }
-
-                f += df;
-                r += dr;
-            }
-        }
-    }
-
-    private IEnumerable<BoardMove> CastlingMoves(ChessPiece king)
-    {
-        if (king.Kind != PieceKind.King || king.HasMoved)
-            yield break;
-
-        int rank = king.Side == PieceSide.White ? 0 : 7;
-        if (king.File != 4 || king.Rank != rank || IsKingInCheck(king.Side))
-            yield break;
-
-        PieceSide enemy = Opposite(king.Side);
-
-        ChessPiece? rookKingSide = _board[7, rank];
-        if (rookKingSide is { Kind: PieceKind.Rook, HasMoved: false } && rookKingSide.Side == king.Side &&
-            _board[5, rank] == null && _board[6, rank] == null &&
-            !IsSquareAttacked(5, rank, enemy) && !IsSquareAttacked(6, rank, enemy))
-        {
-            yield return new BoardMove(4, rank, 6, rank, CastleKingSide: true);
-        }
-
-        ChessPiece? rookQueenSide = _board[0, rank];
-        if (rookQueenSide is { Kind: PieceKind.Rook, HasMoved: false } && rookQueenSide.Side == king.Side &&
-            _board[1, rank] == null && _board[2, rank] == null && _board[3, rank] == null &&
-            !IsSquareAttacked(3, rank, enemy) && !IsSquareAttacked(2, rank, enemy))
-        {
-            yield return new BoardMove(4, rank, 2, rank, CastleQueenSide: true);
-        }
-    }
-
-    private bool CanMoveTo(ChessPiece piece, int file, int rank)
-    {
-        if (!IsInside(file, rank))
-            return false;
-
-        ChessPiece? target = _board[file, rank];
-        return target == null || target.Side != piece.Side;
-    }
-
-    private bool WouldLeaveKingInCheck(ChessPiece piece, BoardMove move)
-    {
-        ChessPiece? captured = _board[move.ToFile, move.ToRank];
-        PieceKind oldKind = piece.Kind;
-        bool oldHasMoved = piece.HasMoved;
-        int oldFile = piece.File;
-        int oldRank = piece.Rank;
-
-        ChessPiece? rook = null;
-        bool rookOldMoved = false;
-        int rookOldFile = -1;
-        int rookOldRank = -1;
-        int rookNewFile = -1;
-        int rookNewRank = -1;
-
-        ApplyMoveInMemory(piece, move, simulate: true, ref rook, ref rookOldMoved, ref rookOldFile, ref rookOldRank, ref rookNewFile, ref rookNewRank);
-        bool check = IsKingInCheck(piece.Side);
-
-        _board[move.ToFile, move.ToRank] = captured;
-        _board[move.FromFile, move.FromRank] = piece;
-        piece.File = oldFile;
-        piece.Rank = oldRank;
-        piece.Kind = oldKind;
-        piece.HasMoved = oldHasMoved;
-
-        if (rook != null)
-        {
-            _board[rookNewFile, rookNewRank] = null;
-            _board[rookOldFile, rookOldRank] = rook;
-            rook.File = rookOldFile;
-            rook.Rank = rookOldRank;
-            rook.HasMoved = rookOldMoved;
-        }
-
-        return check;
-    }
-
-    private void MakeMove(BoardMove move)
-    {
-        ChessPiece? piece = _board[move.FromFile, move.FromRank];
-        if (piece == null)
-            return;
-
-        ChessPiece? rook = null;
-        bool rookOldMoved = false;
-        int rookOldFile = -1;
-        int rookOldRank = -1;
-        int rookNewFile = -1;
-        int rookNewRank = -1;
-
-        ApplyMoveInMemory(piece, move, simulate: false, ref rook, ref rookOldMoved, ref rookOldFile, ref rookOldRank, ref rookNewFile, ref rookNewRank);
-
-        _turn = Opposite(_turn);
-        ClearSelection();
-        UpdateWindowTitle();
-    }
-
-    private void ApplyMoveInMemory(
-        ChessPiece piece,
-        BoardMove move,
-        bool simulate,
-        ref ChessPiece? rook,
-        ref bool rookOldMoved,
-        ref int rookOldFile,
-        ref int rookOldRank,
-        ref int rookNewFile,
-        ref int rookNewRank)
-    {
-        _board[move.FromFile, move.FromRank] = null;
-        _board[move.ToFile, move.ToRank] = piece;
-        piece.File = move.ToFile;
-        piece.Rank = move.ToRank;
-        piece.HasMoved = true;
-
-        if (!simulate && piece.Kind == PieceKind.Pawn && (piece.Rank == 0 || piece.Rank == 7))
-            piece.Kind = PieceKind.Queen;
-
-        if (move.CastleKingSide || move.CastleQueenSide)
-        {
-            rookOldFile = move.CastleKingSide ? 7 : 0;
-            rookOldRank = move.FromRank;
-            rookNewFile = move.CastleKingSide ? 5 : 3;
-            rookNewRank = move.FromRank;
-            rook = _board[rookOldFile, rookOldRank];
-
-            if (rook != null)
-            {
-                rookOldMoved = rook.HasMoved;
-                _board[rookOldFile, rookOldRank] = null;
-                _board[rookNewFile, rookNewRank] = rook;
-                rook.File = rookNewFile;
-                rook.Rank = rookNewRank;
-                rook.HasMoved = true;
-            }
-        }
-    }
-
-    private bool IsKingInCheck(PieceSide side)
-    {
-        ChessPiece? king = Pieces().FirstOrDefault(p => p.Side == side && p.Kind == PieceKind.King);
-        return king != null && IsSquareAttacked(king.File, king.Rank, Opposite(side));
-    }
-
-    private bool IsSquareAttacked(int file, int rank, PieceSide bySide)
-    {
-        foreach (ChessPiece piece in Pieces().Where(p => p.Side == bySide))
-        {
-            int df = file - piece.File;
-            int dr = rank - piece.Rank;
-
-            switch (piece.Kind)
-            {
-                case PieceKind.Pawn:
-                {
-                    int dir = piece.Side == PieceSide.White ? 1 : -1;
-                    if (dr == dir && Math.Abs(df) == 1)
-                        return true;
-                    break;
-                }
-
-                case PieceKind.Knight:
-                    if ((Math.Abs(df) == 1 && Math.Abs(dr) == 2) || (Math.Abs(df) == 2 && Math.Abs(dr) == 1))
-                        return true;
-                    break;
-
-                case PieceKind.King:
-                    if (Math.Abs(df) <= 1 && Math.Abs(dr) <= 1)
-                        return true;
-                    break;
-
-                case PieceKind.Bishop:
-                    if (Math.Abs(df) == Math.Abs(dr) && IsPathClear(piece.File, piece.Rank, file, rank))
-                        return true;
-                    break;
-
-                case PieceKind.Rook:
-                    if ((df == 0 || dr == 0) && IsPathClear(piece.File, piece.Rank, file, rank))
-                        return true;
-                    break;
-
-                case PieceKind.Queen:
-                    if ((df == 0 || dr == 0 || Math.Abs(df) == Math.Abs(dr)) && IsPathClear(piece.File, piece.Rank, file, rank))
-                        return true;
-                    break;
-            }
-        }
-
-        return false;
-    }
-
-    private bool IsPathClear(int fromFile, int fromRank, int toFile, int toRank)
-    {
-        int df = Math.Sign(toFile - fromFile);
-        int dr = Math.Sign(toRank - fromRank);
-        int f = fromFile + df;
-        int r = fromRank + dr;
-
-        while (f != toFile || r != toRank)
-        {
-            if (_board[f, r] != null)
-                return false;
-            f += df;
-            r += dr;
-        }
-
-        return true;
+        return ChessGame.IsInside(file, rank);
     }
 
     private void UpdateWindowTitle()
     {
-        string status = IsKingInCheck(_turn) ? "CHECK" : "";
-        Text = $"3D Chess - C# WinForms OpenGL 4 Shader Demo   |   Turn: {_turn} {status}";
+        string status = _game.Status switch
+        {
+            ChessGame.GameStatus.Check => $"Turn: {_game.Turn}  CHECK",
+            ChessGame.GameStatus.Checkmate => $"CHECKMATE - {ChessGame.Opposite(_game.Turn)} WINS",
+            ChessGame.GameStatus.Stalemate => "STALEMATE - DRAW",
+            _ => $"Turn: {_game.Turn}"
+        };
+        Text = $"3D Chess - C# WinForms OpenGL Shader Demo   |   {status}";
     }
 
-    private static bool IsInside(int file, int rank) => file >= 0 && file < 8 && rank >= 0 && rank < 8;
-    private static PieceSide Opposite(PieceSide side) => side == PieceSide.White ? PieceSide.Black : PieceSide.White;
+    private void UpdateStatusText()
+    {
+        string line1 = _game.Status switch
+        {
+            ChessGame.GameStatus.Checkmate => $"CHECKMATE {ChessGame.Opposite(_game.Turn).ToString().ToUpperInvariant()} WINS",
+            ChessGame.GameStatus.Stalemate => "STALEMATE DRAW",
+            _ when _aiThinking => "COMPUTER THINKING",
+            ChessGame.GameStatus.Check => $"{_game.Turn.ToString().ToUpperInvariant()} TO MOVE  CHECK",
+            _ => $"{_game.Turn.ToString().ToUpperInvariant()} TO MOVE"
+        };
+
+        string line2 = _vsComputer
+            ? $"VS COMPUTER LEVEL {_aiDepth}"
+            : "TWO PLAYERS";
+
+        string combined = line1 + "\n" + line2;
+        if (combined == _statusString && _statusTextMesh != null)
+            return;
+
+        _statusString = combined;
+        _statusTextMesh?.Delete();
+        _statusTextMesh = Mesh.CreateBitmapText(new[] { line1, line2 }, 26.0f, 250.0f, 3.0f, 6.0f);
+    }
 
     private static uint CreateProgram(string vertexSource, string fragmentSource)
     {

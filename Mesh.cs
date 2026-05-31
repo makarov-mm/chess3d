@@ -39,6 +39,15 @@ internal sealed class Mesh
         Gl.BindVertexArray(0);
     }
 
+    public void Delete()
+    {
+        Gl.BindVertexArray(0);
+        uint vbo = _vbo;
+        uint vao = _vao;
+        if (vbo != 0) Gl.DeleteBuffers(1, ref vbo);
+        if (vao != 0) Gl.DeleteVertexArrays(1, ref vao);
+    }
+
     public static Mesh CreateScreenQuad(float x, float y, float width, float height)
     {
         var v = new List<float>();

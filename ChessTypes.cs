@@ -25,4 +25,12 @@ internal sealed class ChessPiece(PieceKind kind, PieceSide side, int file, int r
     public bool HasMoved { get; set; }
 }
 
-internal readonly record struct BoardMove(int FromFile, int FromRank, int ToFile, int ToRank, bool CastleKingSide = false, bool CastleQueenSide = false);
+internal readonly record struct BoardMove(
+    int FromFile,
+    int FromRank,
+    int ToFile,
+    int ToRank,
+    bool CastleKingSide = false,
+    bool CastleQueenSide = false,
+    bool EnPassant = false,
+    PieceKind? Promotion = null);
