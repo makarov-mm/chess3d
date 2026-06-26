@@ -90,3 +90,9 @@ The interesting part of the project is the rendering and interaction pipeline: d
 ## License
 
 MIT License, or replace this section with your preferred license.
+
+## Support
+
+If you found this project interesting or useful, you can support my work:
+
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/makarov-mm?style=flat&logo=github)](https://github.com/sponsors/makarov-mm)
