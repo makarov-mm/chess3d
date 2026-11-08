@@ -1,6 +1,6 @@
 namespace Chess3D;
 
-public static class Files
+internal static class Files
 {
     public static string ShaderVertex => Path.Combine(AppContext.BaseDirectory, "Shaders", "chess.vert");
     public static string ShaderFragment => Path.Combine(AppContext.BaseDirectory, "Shaders", "chess.frag");

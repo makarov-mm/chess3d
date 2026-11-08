@@ -1,193 +1,260 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace Chess3D;
 
-internal static class Wgl
+/// <summary>The Win32, GDI and WGL calls that put an OpenGL 4 context on a window.</summary>
+internal static unsafe partial class Wgl
 {
-    public const uint PFD_DOUBLEBUFFER = 0x00000001;
-    public const uint PFD_DRAW_TO_WINDOW = 0x00000004;
-    public const uint PFD_SUPPORT_OPENGL = 0x00000020;
-    public const byte PFD_TYPE_RGBA = 0;
-    public const byte PFD_MAIN_PLANE = 0;
-    public const int WGL_DRAW_TO_WINDOW_ARB = 0x2001;
-    public const int WGL_SUPPORT_OPENGL_ARB = 0x2010;
-    public const int WGL_DOUBLE_BUFFER_ARB = 0x2011;
-    public const int WGL_PIXEL_TYPE_ARB = 0x2013;
-    public const int WGL_TYPE_RGBA_ARB = 0x202B;
-    public const int WGL_COLOR_BITS_ARB = 0x2014;
-    public const int WGL_DEPTH_BITS_ARB = 0x2022;
-    public const int WGL_STENCIL_BITS_ARB = 0x2023;
-    public const int WGL_SAMPLE_BUFFERS_ARB = 0x2041;
-    public const int WGL_SAMPLES_ARB = 0x2042;
+    private const uint PfdDoubleBuffer = 0x01, PfdDrawToWindow = 0x04, PfdSupportOpenGl = 0x20;
+
+    // WGL_ARB_pixel_format, WGL_ARB_multisample
+    private const int DrawToWindowArb = 0x2001, SupportOpenGlArb = 0x2010, DoubleBufferArb = 0x2011;
+    private const int PixelTypeArb = 0x2013, TypeRgbaArb = 0x202B, ColorBitsArb = 0x2014;
+    private const int DepthBitsArb = 0x2022, StencilBitsArb = 0x2023, SampleBuffersArb = 0x2041, SamplesArb = 0x2042;
+
+    // WGL_ARB_create_context, WGL_ARB_create_context_profile
+    private const int ContextMajorVersionArb = 0x2091, ContextMinorVersionArb = 0x2092;
+    private const int ContextProfileMaskArb = 0x9126, ContextCoreProfileBitArb = 0x0001;
 
     [StructLayout(LayoutKind.Sequential)]
-    public struct PIXELFORMATDESCRIPTOR
+    private struct PixelFormatDescriptor
     {
-        public ushort nSize;
-        public ushort nVersion;
-        public uint dwFlags;
-        public byte iPixelType;
-        public byte cColorBits;
-        public byte cRedBits;
-        public byte cRedShift;
-        public byte cGreenBits;
-        public byte cGreenShift;
-        public byte cBlueBits;
-        public byte cBlueShift;
-        public byte cAlphaBits;
-        public byte cAlphaShift;
-        public byte cAccumBits;
-        public byte cAccumRedBits;
-        public byte cAccumGreenBits;
-        public byte cAccumBlueBits;
-        public byte cAccumAlphaBits;
-        public byte cDepthBits;
-        public byte cStencilBits;
-        public byte cAuxBuffers;
-        public byte iLayerType;
-        public byte bReserved;
-        public uint dwLayerMask;
-        public uint dwVisibleMask;
-        public uint dwDamageMask;
+        public ushort Size;
+        public ushort Version;
+        public uint Flags;
+        public byte PixelType;
+        public byte ColorBits;
+        public byte RedBits, RedShift, GreenBits, GreenShift, BlueBits, BlueShift;
+        public byte AlphaBits, AlphaShift;
+        public byte AccumBits, AccumRedBits, AccumGreenBits, AccumBlueBits, AccumAlphaBits;
+        public byte DepthBits, StencilBits, AuxBuffers;
+        public byte LayerType, Reserved;
+        public uint LayerMask, VisibleMask, DamageMask;
     }
 
-    [DllImport("gdi32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern int DescribePixelFormat(
-        IntPtr hdc,
-        int iPixelFormat,
-        uint nBytes,
-        ref PIXELFORMATDESCRIPTOR ppfd);
-
-    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-    private delegate bool WglChoosePixelFormatARB(
-        IntPtr hdc,
-        int[] piAttribIList,
-        IntPtr pfAttribFList,
-        uint nMaxFormats,
-        int[] piFormats,
-        out uint nNumFormats);
-
-    private static WglChoosePixelFormatARB? _choosePixelFormatARB;
-
-    [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern IntPtr GetDC(IntPtr hWnd);
-
-    [DllImport("user32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
-
-    [DllImport("gdi32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern int ChoosePixelFormat(IntPtr hdc, ref PIXELFORMATDESCRIPTOR ppfd);
-
-    [DllImport("gdi32.dll", CallingConvention = CallingConvention.Winapi)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetPixelFormat(IntPtr hdc, int format, ref PIXELFORMATDESCRIPTOR ppfd);
-
-    [DllImport("gdi32.dll", CallingConvention = CallingConvention.Winapi)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SwapBuffers(IntPtr hdc);
-
-    [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern IntPtr wglCreateContext(IntPtr hdc);
-
-    [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool wglMakeCurrent(IntPtr hdc, IntPtr hglrc);
-
-    [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool wglDeleteContext(IntPtr hglrc);
-
-    [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi)]
-    public static extern IntPtr wglGetProcAddress([MarshalAs(UnmanagedType.LPStr)] string lpszProc);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
-    public static extern IntPtr LoadLibrary(string lpFileName);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
-    public static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
-
-    public static void LoadWglExtensions()
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Message
     {
-        if (_choosePixelFormatARB is not null)
-            return;
+        public nint Window;
+        public uint Id;
+        public nint WParam, LParam;
+        public uint Time;
+        public int X, Y;
+    }
 
-        using Form dummy = new()
+    [LibraryImport("user32.dll")]
+    private static partial nint GetDC(nint window);
+
+    [LibraryImport("user32.dll")]
+    private static partial int ReleaseDC(nint window, nint dc);
+
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint CreateWindowEx(uint exStyle, string className, string? windowName, uint style,
+                                               int x, int y, int width, int height, nint parent, nint menu, nint instance, nint param);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(nint window);
+
+    [LibraryImport("user32.dll", EntryPoint = "PeekMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PeekMessage(out Message message, nint window, uint filterMin, uint filterMax, uint remove);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial int ChoosePixelFormat(nint dc, in PixelFormatDescriptor descriptor);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial int DescribePixelFormat(nint dc, int format, uint size, out PixelFormatDescriptor descriptor);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetPixelFormat(nint dc, int format, in PixelFormatDescriptor descriptor);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SwapBuffers(nint dc);
+
+    [LibraryImport("opengl32.dll")]
+    private static partial nint wglCreateContext(nint dc);
+
+    [LibraryImport("opengl32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool wglMakeCurrent(nint dc, nint context);
+
+    [LibraryImport("opengl32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool wglDeleteContext(nint context);
+
+    [LibraryImport("opengl32.dll", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial nint wglGetProcAddress(string name);
+
+    private static delegate* unmanaged[Stdcall]<nint, int*, float*, uint, int*, uint*, int> choosePixelFormatArb;
+    private static delegate* unmanaged[Stdcall]<nint, nint, int*, nint> createContextAttribsArb;
+    private static bool extensionsLoaded;
+
+    /// <summary>
+    /// Gives the window a double-buffered pixel format, with 8x or 4x multisampling where the driver
+    /// has it, and makes an OpenGL 4.0 core context current on it, with vertical sync where the driver allows.
+    /// </summary>
+    public static OpenGlContext CreateContext(nint window)
+    {
+        LoadExtensions();
+
+        nint dc = GetDC(window);
+        if (dc == 0)
+            throw new InvalidOperationException("The window has no device context.");
+
+        nint context = 0;
+        try
         {
-            ShowInTaskbar = false,
-            FormBorderStyle = FormBorderStyle.FixedToolWindow,
-            StartPosition = FormStartPosition.Manual,
-            Location = new Point(-32000, -32000),
-            Size = new Size(1, 1)
-        };
+            int format = ChooseMultisampleFormat(dc, 8);
+            if (format == 0)
+                format = ChooseMultisampleFormat(dc, 4);
+            if (format == 0)
+                format = ChoosePixelFormat(dc, BasicFormat());
+            if (format == 0 || DescribePixelFormat(dc, format, (uint)sizeof(PixelFormatDescriptor), out var descriptor) == 0 ||
+                !SetPixelFormat(dc, format, descriptor))
+            {
+                throw new InvalidOperationException("No OpenGL pixel format is available for the window.");
+            }
 
-        dummy.Show();
+            if (createContextAttribsArb != null)
+            {
+                int* attributes = stackalloc int[]
+                {
+                    ContextMajorVersionArb, 4,
+                    ContextMinorVersionArb, 0,
+                    ContextProfileMaskArb, ContextCoreProfileBitArb,
+                    0
+                };
+                context = createContextAttribsArb(dc, 0, attributes);
+            }
+            else
+            {
+                context = wglCreateContext(dc); // the driver's default version; the shaders tell if it is too old
+            }
 
-        IntPtr dc = GetDC(dummy.Handle);
+            if (context == 0 || !wglMakeCurrent(dc, context))
+                throw new InvalidOperationException("OpenGL 4.0 is not available. Update the graphics driver.");
 
-        var pfd = new PIXELFORMATDESCRIPTOR
-        {
-            nSize = (ushort)Marshal.SizeOf<PIXELFORMATDESCRIPTOR>(),
-            nVersion = 1,
-            dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-            iPixelType = PFD_TYPE_RGBA,
-            cColorBits = 32,
-            cDepthBits = 24,
-            cStencilBits = 8,
-            iLayerType = PFD_MAIN_PLANE
-        };
-
-        int pf = ChoosePixelFormat(dc, ref pfd);
-        SetPixelFormat(dc, pf, ref pfd);
-
-        IntPtr rc = wglCreateContext(dc);
-        wglMakeCurrent(dc, rc);
-
-        IntPtr proc = wglGetProcAddress("wglChoosePixelFormatARB");
-        if (proc != IntPtr.Zero)
-        {
-            _choosePixelFormatARB =
-                Marshal.GetDelegateForFunctionPointer<WglChoosePixelFormatARB>(proc);
+            // Vertical sync: swapping the buffers waits for the screen refresh.
+            var swapInterval = (delegate* unmanaged[Stdcall]<int, int>)Resolve("wglSwapIntervalEXT");
+            if (swapInterval != null)
+                swapInterval(1);
+            return new OpenGlContext(window, dc, context);
         }
-
-        wglMakeCurrent(IntPtr.Zero, IntPtr.Zero);
-        wglDeleteContext(rc);
-        ReleaseDC(dummy.Handle, dc);
+        catch
+        {
+            if (context != 0)
+            {
+                wglMakeCurrent(0, 0);
+                wglDeleteContext(context);
+            }
+            _ = ReleaseDC(window, dc);
+            throw;
+        }
     }
 
-    public static int ChooseMultisamplePixelFormat(IntPtr hdc, int samples)
-    {
-        LoadWglExtensions();
+    /// <summary>Whether no message waits in the thread's queue.</summary>
+    public static bool IsMessageQueueEmpty() => !PeekMessage(out _, 0, 0, 0, 0);
 
-        if (_choosePixelFormatARB is null)
+    /// <summary>Resolves an OpenGL or WGL extension function of the current context; null if there is none.</summary>
+    public static void* Resolve(string name)
+    {
+        nint address = wglGetProcAddress(name);
+        // Some drivers return small values instead of null for the functions they lack.
+        return address is 0 or 1 or 2 or 3 or -1 ? null : (void*)address;
+    }
+
+    private static PixelFormatDescriptor BasicFormat() => new()
+    {
+        Size = (ushort)sizeof(PixelFormatDescriptor),
+        Version = 1,
+        Flags = PfdDrawToWindow | PfdSupportOpenGl | PfdDoubleBuffer,
+        ColorBits = 32,
+        DepthBits = 24,
+        StencilBits = 8
+    };
+
+    private static int ChooseMultisampleFormat(nint dc, int samples)
+    {
+        if (choosePixelFormatArb == null)
             return 0;
 
-        int[] attributes =
+        int* attributes = stackalloc int[]
         {
-            WGL_DRAW_TO_WINDOW_ARB, 1,
-            WGL_SUPPORT_OPENGL_ARB, 1,
-            WGL_DOUBLE_BUFFER_ARB, 1,
-            WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-            WGL_COLOR_BITS_ARB, 32,
-            WGL_DEPTH_BITS_ARB, 24,
-            WGL_STENCIL_BITS_ARB, 8,
-            WGL_SAMPLE_BUFFERS_ARB, 1,
-            WGL_SAMPLES_ARB, samples,
+            DrawToWindowArb, 1,
+            SupportOpenGlArb, 1,
+            DoubleBufferArb, 1,
+            PixelTypeArb, TypeRgbaArb,
+            ColorBitsArb, 32,
+            DepthBitsArb, 24,
+            StencilBitsArb, 8,
+            SampleBuffersArb, 1,
+            SamplesArb, samples,
             0
         };
 
-        int[] formats = new int[1];
+        int format;
+        uint count;
+        return choosePixelFormatArb(dc, attributes, null, 1, &format, &count) != 0 && count > 0 ? format : 0;
+    }
 
-        bool ok = _choosePixelFormatARB(
-            hdc,
-            attributes,
-            IntPtr.Zero,
-            1,
-            formats,
-            out uint count);
+    // The functions that choose a multisampled format and create a core context are extensions, found
+    // through a current context; and a window keeps the first pixel format it gets, so the context for
+    // looking them up lives on a throwaway hidden window.
+    private static void LoadExtensions()
+    {
+        if (extensionsLoaded)
+            return;
+        extensionsLoaded = true;
 
-        if (!ok || count == 0)
-            return 0;
+        nint window = CreateWindowEx(0, "STATIC", null, 0, 0, 0, 1, 1, 0, 0, 0, 0);
+        if (window == 0)
+            return;
 
-        return formats[0];
+        nint dc = GetDC(window);
+        try
+        {
+            PixelFormatDescriptor descriptor = BasicFormat();
+            int format = ChoosePixelFormat(dc, descriptor);
+            if (format == 0 || !SetPixelFormat(dc, format, descriptor))
+                return;
+
+            nint context = wglCreateContext(dc);
+            if (context == 0)
+                return;
+
+            if (wglMakeCurrent(dc, context))
+            {
+                choosePixelFormatArb = (delegate* unmanaged[Stdcall]<nint, int*, float*, uint, int*, uint*, int>)Resolve("wglChoosePixelFormatARB");
+                createContextAttribsArb = (delegate* unmanaged[Stdcall]<nint, nint, int*, nint>)Resolve("wglCreateContextAttribsARB");
+                wglMakeCurrent(0, 0);
+            }
+            wglDeleteContext(context);
+        }
+        finally
+        {
+            _ = ReleaseDC(window, dc);
+            DestroyWindow(window);
+        }
+    }
+
+    /// <summary>An OpenGL context current on a window's device context.</summary>
+    public sealed class OpenGlContext(nint window, nint dc, nint context) : IDisposable
+    {
+        private nint _context = context;
+
+        public void SwapBuffers() => Wgl.SwapBuffers(dc);
+
+        public void Dispose()
+        {
+            if (_context == 0)
+                return;
+            wglMakeCurrent(0, 0);
+            wglDeleteContext(_context);
+            _ = ReleaseDC(window, dc);
+            _context = 0;
+        }
     }
 }
